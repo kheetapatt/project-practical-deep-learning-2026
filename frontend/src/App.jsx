@@ -2,15 +2,64 @@ import React, { useState } from 'react';
 import './App.css';
 
 function App() {
-  // state: 'initial' (ภาพ 2), 'ready' (ภาพ 3), 'results' (ภาพ 4)
+  // state ควบคุมหน้าจอ: 'initial', 'ready', 'loading', 'results'
   const [appState, setAppState] = useState('initial');
+  
+  // เพิ่ม State สำหรับเก็บไฟล์และผลลัพธ์จาก API
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [analysisResult, setAnalysisResult] = useState(null);
+
+  // ฟังก์ชันจัดการเมื่อผู้ใช้อัปโหลดไฟล์
+  const handleFileChange = (event) => {
+    const files = Array.from(event.target.files);
+    setSelectedFiles(files);
+    if (files.length > 0) {
+      setAppState('ready');
+    } else {
+      setAppState('initial');
+    }
+  };
+
+  // ฟังก์ชันสำหรับส่งไฟล์ไปหา Backend
+  const handleAnalyze = async () => {
+    if (selectedFiles.length === 0) return;
+
+    setAppState('loading'); // เปลี่ยนหน้าจอเป็นกำลังโหลด
+
+    const formData = new FormData();
+    // นำไฟล์ทั้งหมดใส่เข้าไปใน formData โดยใช้ชื่อ key ว่า "files" (ต้องตรงกับฝั่ง FastAPI)
+    selectedFiles.forEach((file) => {
+      formData.append("files", file);
+    });
+
+    try {
+      // ยิง API ไปที่เซิร์ฟเวอร์ FastAPI (ปกติรันที่พอร์ต 8000)
+      const response = await fetch("http://localhost:8000/analyze", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Network response was not ok");
+      }
+
+      const data = await response.json();
+      setAnalysisResult(data); // เก็บผลลัพธ์ไว้ใน State
+      setAppState('results');  // เปลี่ยนหน้าจอไปแสดงผลลัพธ์
+
+    } catch (error) {
+      console.error("Error analyzing images:", error);
+      alert("เกิดข้อผิดพลาดในการวิเคราะห์รูปภาพ");
+      setAppState('ready'); // กลับไปหน้าพร้อมวิเคราะห์ถ้า error
+    }
+  };
 
   return (
     <div className="app-container">
       {/* Header */}
       <header className="header">
         {appState === 'results' ? (
-          <div className="header-left">
+          <div className="header-lฤeft">
             <button className="btn-back" onClick={() => setAppState('ready')}>
               &larr; Go back
             </button>
@@ -26,48 +75,45 @@ function App() {
         {/* === Left Panel === */}
         <aside className="left-panel">
           {appState !== 'results' ? (
-            // --- View: Upload / Ready ---
             <div className="upload-view">
               <p className="label">Upload Images</p>
               
               <div className="dropzone">
+                {/* เพิ่ม input สำหรับเลือกไฟล์ */}
+                <input 
+                  type="file" 
+                  multiple 
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  style={{ marginBottom: '10px' }}
+                />
+                
                 {appState === 'initial' ? (
                   <>
                     <p>Supports up to 300 images</p>
-                    <p className="file-count">0 file selected</p>
+                    <p className="file-count">{selectedFiles.length} file selected</p>
                   </>
                 ) : (
-                  <p className="file-count">200 file selected</p>
+                  <p className="file-count">{selectedFiles.length} files selected</p>
                 )}
               </div>
 
               <div className="btn-group">
-                <button className="btn-outline" onClick={() => setAppState('ready')}>Upload Images</button>
-                <button className="btn-outline" onClick={() => setAppState('initial')}>Clear/Reset</button>
+                <button className="btn-outline" onClick={() => {
+                  setSelectedFiles([]);
+                  setAppState('initial');
+                }}>
+                  Clear
+                </button>
+                {/* ผูกปุ่ม Start Analysis กับฟังก์ชันที่เราสร้างไว้ */}
+                <button 
+                  className="btn-primary" 
+                  onClick={handleAnalyze}
+                  disabled={appState === 'loading' || selectedFiles.length === 0}
+                >
+                  {appState === 'loading' ? 'Analyzing...' : 'Start Analysis'}
+                </button>
               </div>
-
-              <button className="btn-outline full-width">Review the previous analysis results.</button>
-
-              {appState === 'ready' && (
-                <div className="analyze-section">
-                  <div className="input-row">
-                    <label>Slide ID:</label>
-                    <input type="text" disabled className="input-box" />
-                    <button className="btn-primary" onClick={() => setAppState('results')}>Analyze</button>
-                  </div>
-                  <div className="info-box gray">
-                    <strong>Files Ready for Analysis</strong>
-                    <p>200 images uploaded and ready. Click "Analyze" to begin automated screening.</p>
-                  </div>
-                </div>
-              )}
-
-              {appState === 'initial' && (
-                <div className="info-box blue">
-                  <strong>Recommendation:</strong>
-                  <p>Capture images at Field of View 0.5 mm for optimal analysis accuracy. Ensure consistent lighting and focus across all slides.</p>
-                </div>
-              )}
             </div>
           ) : (
             // --- View: Results Overview ---
